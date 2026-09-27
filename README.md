@@ -1,5 +1,6 @@
 ## Livrable ToDoList 
 [![CI](https://github.com/Merouanino/ToDoList/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Merouanino/ToDoList/actions/workflows/ci.yml)
+[![CD](https://github.com/Merouanino/ToDoList/actions/workflows/cd.yml/badge.svg)](https://github.com/Merouanino/ToDoList/actions/workflows/cd.yml)
 
 API de ToDoList minimaliste afin de tester une chaîne DevOps.
 
