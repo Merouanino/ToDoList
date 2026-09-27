@@ -1,0 +1,24 @@
+groups:
+  - name: todo-api
+    rules:
+      - alert: Erreur 503
+        expr: |
+          sum(rate(http_requests_total{code=~"503"}[2m]))
+            / sum(rate(http_requests_total[2m])) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux 503 supérieur à 5 %"
+          description: "{{ $value | humanizePercentage }} des requêtes échouent en 503 depuis plus d'1 minute."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket[2m]))) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence p95 > 500 ms"
+          description: "Le p95 vaut {{ $value | humanizeDuration }} depuis plus de 2 minutes."
