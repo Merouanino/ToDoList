@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python-deps
+        with:
+          python-version: "3.12"
+
+      - name: flake8
+        run: flake8
+
+      - name: yamllint
+        run: yamllint --strict .
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python-deps
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: pytest
+        run: |
+          mkdir -p reports
+          pytest -v \
+            --junitxml=reports/junit.xml \
+            --cov=app --cov-report=term --cov-report=xml:reports/coverage.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-py${{ matrix.python-version }}
+          path: reports/
+          retention-days: 7
+
+  build:
+    name: Build image
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker build
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: docker build --build-arg COMMIT_SHA="$COMMIT_SHA" -t todo-api:ci .
+
+      - name: Verification non root
+        run: test "$(docker run --rm todo-api:ci id -u)" = "10001"
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: test-reports-*
+          path: reports
+
+      - name: Conclusion des tests
+        run: |
+          shopt -s nullglob
+          echo "## Rapports de tests" >> "$GITHUB_STEP_SUMMARY"
+          for f in reports/*/junit.xml; do
+            stats=$(grep -o -m1 '<testsuite [^>]*' "$f" | grep -oE '(tests|failures|errors)="[0-9]+"' | tr '\n' ' ')
+            echo "- \`$f\` : $stats" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Conclusion des jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Jobs : $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::un job a fail ($result)"
+              exit 1
+            fi
+          done
