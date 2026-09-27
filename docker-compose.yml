@@ -38,7 +38,7 @@ services:
       - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - app
     restart: unless-stopped
