@@ -69,7 +69,7 @@ Compose `todo-prod`, app sur 8080 et Prometheus sur 9091
 Metrics: `http_requests_total` - `http_request_duration_seconds` - `app_build_info` 
 
 ## Alertes
-`HighErrorRate` firing si 503 / total > 5 % avec une fenêtre de 2mins for 1min - Critical
+`Erreur 503` firing si 503 / total > 5 % avec une fenêtre de 2mins for 1min - Critical
 `HighLatencyP95` firing si p95 de la latence > 500 ms avec une fenêtre de 2min for 2min - Warning
 Scraping chaque 15s donc 8 intervals de mesures
 
