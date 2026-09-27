@@ -78,3 +78,80 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (${{ inputs.environment || 'production' }})
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, todo-deploy]
+    environment: ${{ inputs.environment || 'production' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      COMPOSE_PROJECT_NAME: todo-prod
+      APP_PORT: "8080"
+      PROMETHEUS_PORT: "9091"
+      IMAGE: ${{ needs.build-and-push.outputs.image }}
+      NEW_TAG: ${{ needs.build-and-push.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Login ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Version Prod
+        run: |
+          CID=$(docker compose ps -q app 2>/dev/null || true)
+          PREVIOUS_TAG=""
+          if [ -n "$CID" ]; then
+            FORMAT='{{ index .Config.Labels "org.opencontainers.image.revision" }}'
+            PREVIOUS_TAG=$(docker inspect --format "$FORMAT" "$CID")
+          fi
+          echo "Version en prod: ${PREVIOUS_TAG:-aucune}"
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
+
+      - name: deploy ${{ env.NEW_TAG }}
+        run: |
+          export APP_IMAGE="$IMAGE:$NEW_TAG"
+          docker compose pull app
+          docker compose up -d --no-build
+
+      - name: check post deploy
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 5 --retry-all-errors \
+            --max-time 5 "http://localhost:$APP_PORT/health"
+          echo
+          DEPLOYED=$(curl --fail --silent --max-time 5 "http://localhost:$APP_PORT/version")
+          echo "Version servie : $DEPLOYED"
+          echo "$DEPLOYED" | grep -q "\"commit\":\"$NEW_TAG\""
+
+      - name: rollback ${{ env.PREVIOUS_TAG }}
+        if: failure() && env.PREVIOUS_TAG != ''
+        run: |
+          echo "::warning::deployment failed for $NEW_TAG, rollback to $PREVIOUS_TAG"
+          export APP_IMAGE="$IMAGE:$PREVIOUS_TAG"
+          docker compose pull app
+          docker compose up -d --no-build
+          curl --fail --silent --show-error --retry 3 --retry-delay 5 --retry-all-errors \
+            --max-time 5 "http://localhost:$APP_PORT/health"
+
+      - name: deploy summary
+        if: always()
+        run: |
+          {
+            echo "## Deployment"
+            echo "- Image : \`$IMAGE:$NEW_TAG\`"
+            echo "- Previous : \`${PREVIOUS_TAG:-aucune}\`"
+            echo "- Result : ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
