@@ -105,3 +105,9 @@ def test_metrics_endpoint_exposes_prometheus_format(client):
     assert 'endpoint="/metrics"' not in body
     info = {"version": app_module.APP_VERSION, "commit": app_module.COMMIT_SHA}
     assert sample("app_build_info", info) == 1.0
+
+
+def test_version_exposes_version_and_commit(client):
+    resp = client.get("/version")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"version": app_module.APP_VERSION, "commit": app_module.COMMIT_SHA}

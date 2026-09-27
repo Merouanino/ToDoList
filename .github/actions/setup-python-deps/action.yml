@@ -1,0 +1,23 @@
+name: Setup Python + dependencies
+description: Installation Python + restore cache pip + dependencies
+
+inputs:
+  python-version:
+    description: Version de Python
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          requirements-local.txt
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r requirements-local.txt
