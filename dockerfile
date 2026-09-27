@@ -29,4 +29,4 @@ ARG COMMIT_SHA=unknown
 ENV APP_VERSION=$APP_VERSION \
     COMMIT_SHA=$COMMIT_SHA
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--access-logfile", "-", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--access-logfile", "-", "app:app"]
